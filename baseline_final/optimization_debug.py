@@ -1,10 +1,13 @@
+'''
+THIS SCRIPT IS MEANT FOR DEBUGGING THE OPTIMIZATION SETUP USING PLANAR CIRCLE DISKS
+'''
 import numpy as np
 import cvxpy as cp
-import optim_other_utils as OU
 import optimization_setup as OS
 from circle_pcd import *
 
 if __name__ == '__main__':
+    # EXAMPLE USAGE
 
     num_points = 10
     theta_vals = np.linspace(0, 2 * np.pi, num_points)

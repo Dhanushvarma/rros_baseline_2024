@@ -1,3 +1,7 @@
+'''
+THIS SCRIPT CONTAINS THE FUNCTIONS FOR THE IMPLEMENTATION OF THE OPTIMIZATION PROBLEMs
+'''
+
 import numpy as np
 import cvxpy as cp
 from scipy.spatial.transform import Rotation as R
@@ -95,6 +99,7 @@ def create_optimization_problem(q_pred, q_star, G_matrix, constraints_list):
 
 
 if __name__ == '__main__':
+    # EXAMPLE USAGE
     aux_var = np.array([[0], [0], [0], [1], [2], [3]])  # Solution from previous optimization
     radius = 1
     obj1_point = np.array([0, 0, 0])  # Origin

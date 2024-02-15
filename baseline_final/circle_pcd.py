@@ -1,3 +1,8 @@
+'''
+THIS SCRIPT IS MEANT FOR GENERATING PCD FOR CIRCLE PLANAR OBJECTS | DEBUGGING
+'''
+
+
 import numpy as np
 import open3d as o3d
 
