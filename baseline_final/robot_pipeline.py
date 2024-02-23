@@ -4,6 +4,7 @@ THIS SCRIPT IS THE MAIN SCRIPT FOR THE ROBOT PIPELINE, USE SIMILAR FASHION IN TH
 
 import sys
 import numpy as np
+import pandas as pd
 import cvxpy as cp
 import optimization_setup as OS
 import open_3d_utils as O3D
@@ -83,29 +84,53 @@ class robot_pipeline:
         return problem, q_star
 
 
+def read_data_from_csv(csv_file_path, row_number):
+    # Read the CSV file
+    df = pd.read_csv(csv_file_path)
+
+    force_sensed = df.loc[row_number, ['Tx', 'Ty', 'Tz', 'Fx', 'Fy', 'Fz']].to_numpy().reshape(6, 1)
+    position_vector_mm = df.loc[row_number, ['x', 'y', 'z']].to_numpy() * 1000
+    orientation_vector = df.loc[row_number, ['roll', 'pitch', 'yaw']].to_numpy()
+
+    pose_vector = np.vstack((orientation_vector, position_vector_mm)).reshape(6, 1)
+
+    return force_sensed, pose_vector
+
+
 if __name__ == '__main__':
 
-    # EXPERIMENT SETUP
-    peg_stl_file_path = r'C:\Users\Dhanush\PycharmProjects\rros_baselines_2024\assets\stl\cross_peg_flat v1.stl'
-    hole_stl_file_path = r'C:\Users\Dhanush\PycharmProjects\rros_baselines_2024\assets\stl\cross_hole_flat v1.stl'
+    # NOTE(dhanush) : These are the file paths
+    csv_file_path = r'C:\Users\Dhanush\PycharmProjects\rros_baselines_2024\data\kuka_data_euler.csv'
+    hole_stl_file_path = r'C:\Users\Dhanush\PycharmProjects\rros_baselines_2024\assets\stl_kuka\square_hole v1_rev.stl'
+    peg_stl_file_path = r'C:\Users\Dhanush\PycharmProjects\rros_baselines_2024\assets\stl_kuka\square_peg_origin_at_tip v1.stl'
 
-    # UNCERTAINTY GRID
+    # NOTE(dhanush) : Data Selection Manually
+    row_number = 0
+    force_sensed, pose_vector = read_data_from_csv(csv_file_path, row_number)
+    print("Pose Vector from CSV:", pose_vector.T)
+    print("Force Vector from CSV:", force_sensed.T)
+
+    # UNCERTAINTY GRID - continuous
     min_vals = [-0.235, -0.235, -0.204, -17.6, -17.6, -3.49]
     max_vals = [0.235, 0.235, 0.204, 17.6, 17.6, 0]
-    num_points_per_dim = [5, 5, 5, 10, 10, 10]
 
     # NOTE: HERE WE INPUT THE NUMBER OF POINTS TO HAVE FOR EACH OBJECT
-    peg_pcd = O3D.sample_points_from_stl(peg_stl_file_path, 500)  # OBJECT 1
-    hole_pcd = O3D.sample_points_from_stl(hole_stl_file_path, 500)  # OBJECT 2
+    peg_pcd = O3D.sample_points_from_stl(peg_stl_file_path, 10000)  # OBJECT 1
+    hole_pcd = O3D.sample_points_from_stl(hole_stl_file_path, 10000)  # OBJECT 2
+
+    peg_pcd = O3D.filter_pcd_by_z(pcd=peg_pcd, z_range=[0, 0.0001])  # TRIMMING THE PCD
+    hole_pcd = O3D.filter_pcd_by_z(pcd=hole_pcd, z_range=[-0.0001, 0])  # TRIMMING THE PCD
+    print("Number of Points in the Peg : ", np.asarray(peg_pcd.points).shape[0])
+    print("Number of Points in the Hole : ", np.asarray(hole_pcd.points).shape[0])
 
     peg_sph_rad = O3D.find_closest_pair_distance_in_pcd(peg_pcd)
     hole_sph_rad = O3D.find_closest_pair_distance_in_pcd(hole_pcd)
 
-    sph_rad = min(peg_sph_rad, hole_sph_rad)  # RADIUS OF THE SPHERE OBJECTS
+    sph_rad = min(peg_sph_rad, hole_sph_rad)  # TODO : Check if doing this is correct
 
     O3D.render_spheres_for_pcd(pcd=peg_pcd, radius=sph_rad - 0.1)  # RENDER TO CHECK
     O3D.render_spheres_for_pcd(pcd=hole_pcd, radius=sph_rad - 0.1)  # RENDER TO CHECK
-
+    O3D.render_spheres_for_pcds(pcds=[peg_pcd, hole_pcd], radii=[.5, .5], colors=[(1, 0, 0), (0, 1, 0)])
 
     # Algorithm Object
     baseline_object = robot_pipeline()
@@ -116,19 +141,22 @@ if __name__ == '__main__':
                                min_vals_UC=min_vals, max_vals_UC=max_vals)
 
     # INPUT SENSED FORCE HERE
-    baseline_object.set_force_sensed(force_sensed=1)
+    baseline_object.set_force_sensed(force_sensed=force_sensed)
     q_star = cp.Variable((6,1))  # THE OPTIMIZATION VARIABLE
 
     final_config = None  # TO STORE THE FINAL ANSWER FOR 1 FORCE SIGNAL
-    EPSILON = 0.5  # EPSILON BOUND FOR FORCE TERM | (F_c) - (F_s) < EPSILON
-    optimization_problem_count = 0  # TO KEEP TRACK OF HOW MANY SAMPLES WE DRAW FROM "U"
+    # EPSILON BOUND FOR FORCE TERM | (F_c) - (F_s) < EPSILON
+    EPSILON = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+    optimization_problem_count = 0  # SAMPLES from set "U" counter
+    MAX_ITERATIONS = 5  # Maximum number of iterations
 
-    while(True):
+    while True:
 
         q_pred = baseline_object.sample_UC_grid()
         print("q_pred is:", q_pred)
 
-        optimization_problem = baseline_object.opt_problem(q_star=q_star, q_pred= q_pred, aux_var=baseline_object.q_star_init)[0]
+        optimization_problem = \
+        baseline_object.opt_problem(q_star=q_star, q_pred=q_pred, aux_var=baseline_object.q_star_init)[0]
         optimization_problem.solve(solver=cp.ECOS, verbose=False)
         optimization_problem_count += 1
 
@@ -138,26 +166,30 @@ if __name__ == '__main__':
         # CALCULATING THE FORCE BASED ON THE DIFFERENCE
         force_calculated = baseline_object.stiffness_matrix @ (q_pred - q_star.value)
 
-        if abs(baseline_object.force_sensed - force_calculated) < EPSILON:
+        force_difference = np.abs(baseline_object.force_sensed - force_calculated)
 
+        if np.all(force_difference <= EPSILON.reshape(6, 1)) or optimization_problem_count >= MAX_ITERATIONS:
             final_config = q_star.value
-
-            print(f"Problem solved in {optimization_problem_count}st Iteration of Algorithm")
-
+            print(f"Problem solved in {optimization_problem_count} iterations.")
             break
 
         else:
+            # Your condition to update q_star_init or reset the optimization variable
 
-            if q_star.value.any() == None : # IF SOLVER GETS NO SOLUTION THEN WE GO BACK TO ORIGINAL GUESS
-                baseline_object.q_star_init  = np.zeros((6,1))
+            # This part remains unchanged
 
-            else:  # IF SOLVER GETS SOLUTION BUT FORCE HAS NOT MATCHED
+            if q_star.value is None:  # Use 'is None' for a proper None check
+                baseline_object.q_star_init = np.zeros((6, 1))
+            else:
                 baseline_object.q_star_init = q_star.value
 
-            q_star = cp.Variable((6,1))  # INIT NEW CP VAR
+            q_star = cp.Variable((6, 1))  # Reinitialize the optimization variable
 
+    print("Optimized Configuration (q_star.value):", q_star.value.T)
+    print("Pose Vector from CSV:", pose_vector.T)
 
-
+    difference = q_star.value - pose_vector
+    print("Difference between optimized configuration and CSV pose vector:", difference.T)
 
 
 

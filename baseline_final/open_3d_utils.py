@@ -42,7 +42,6 @@ def find_closest_pair_distance_in_pcd(pcd):
     return min_distance
 
 
-
 def collect_leaf_node_origins(node, node_info, leaf_origins):
     """
     Modified traverse function to collect leaf node origins.
@@ -76,10 +75,6 @@ def create_spheres_at_origins(leaf_origins, radius=0.05):
         sphere.translate(origin)
         spheres.append(sphere)
     return spheres
-
-
-
-
 
 
 def stl_to_point_cloud(stl_file_path, number_of_points=10000):
@@ -179,7 +174,41 @@ def render_spheres_for_pcd(pcd, radius=0.05):
         sphere.compute_vertex_normals()
 
     # Visualize the spheres
-    o3d.visualization.draw_geometries(spheres, window_name="Spheres at Point Cloud Locations")
+    o3d.visualization.draw(spheres)
+
+
+def render_spheres_for_pcds(pcds, radii, colors):
+    """
+    Renders spheres at the locations of points in multiple point clouds with specified radii and colors.
+
+    Args:
+    - pcds: A list of Open3D PointCloud objects.
+    - radii: A list of the radii of the spheres to be rendered at each point location in the corresponding point cloud.
+    - colors: A list of colors where each color is applied to the spheres of the corresponding point cloud.
+              Each color should be a tuple or list of 3 elements (R, G, B) with values between 0 and 1.
+    """
+    if len(pcds) != len(radii) or len(pcds) != len(colors):
+        raise ValueError("Length of pcds, radii, and colors must be equal")
+
+    # Ensure all elements in pcds are point cloud objects
+    for pcd in pcds:
+        if not isinstance(pcd, o3d.geometry.PointCloud):
+            raise TypeError("All elements in pcds must be instances of open3d.geometry.PointCloud")
+
+    meshes = []
+    for pcd, radius, color in zip(pcds, radii, colors):
+        # Extract points from the point cloud
+        points = np.asarray(pcd.points)
+
+        # Create a sphere mesh for each point in the current point cloud with the corresponding radius
+        for point in points:
+            sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+            sphere.translate(point, relative=False)
+            sphere.paint_uniform_color(color)  # Apply color
+            meshes.append(sphere)
+
+    # Visualize all spheres in the same window
+    o3d.visualization.draw(meshes)
 
 
 def sample_points_from_stl_fancy(stl_path, number_of_points=1000):
@@ -230,6 +259,35 @@ def sample_points_from_stl(stl_path, number_of_points=1000):
 
     # Convert to Open3D point cloud for further processing or visualization
     point_cloud = o3d.geometry.PointCloud()
+    # point_cloud.points = o3d.utility.Vector3dVector(points)
     point_cloud.points = o3d.utility.Vector3dVector(points[0])
 
     return point_cloud
+
+
+def filter_pcd_by_z(pcd, z_range):
+    """
+    Filters a point cloud to only include points within a specified z-range.
+
+    Parameters:
+    - pcd: The input point cloud as an Open3D PointCloud object.
+    - z_range: A list or tuple with two elements specifying the min and max z values.
+
+    Returns:
+    - A new Open3D PointCloud object containing only the points within the specified z-range.
+    """
+    # Convert the point cloud to a numpy array
+    points = np.asarray(pcd.points)
+
+    # Find the indices of points within the specified z-range
+    z_min, z_max = z_range
+    in_range_indices = np.where((points[:, 2] >= z_min) & (points[:, 2] <= z_max))[0]
+
+    # Select only the points within the z-range
+    filtered_points = points[in_range_indices, :]
+
+    # Create a new point cloud object for the filtered points
+    filtered_pcd = o3d.geometry.PointCloud()
+    filtered_pcd.points = o3d.utility.Vector3dVector(filtered_points)
+
+    return filtered_pcd
