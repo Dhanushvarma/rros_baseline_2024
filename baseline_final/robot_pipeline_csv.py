@@ -11,9 +11,9 @@ import json
 if __name__ == '__main__':
 
     # NOTE(dhanush) : These are the file paths
-    csv_file_path = r'C:\Users\Dhanush\PycharmProjects\rros_baselines_2024\data\csv_data_all\kuka_data_euler.csv'
-    hole_stl_file_path = r'C:\Users\Dhanush\PycharmProjects\rros_baselines_2024\assets\stl_kuka\square_hole v1_rev.stl'
-    peg_stl_file_path = r'C:\Users\Dhanush\PycharmProjects\rros_baselines_2024\assets\stl_kuka\square_peg_origin_at_tip v1.stl'
+    csv_file_path = '/home/lm-2023/Documents/rros_baseline_2024/data/csv_data_paper/paper_data_force_noise.csv'
+    hole_stl_file_path = '/home/lm-2023/Documents/rros_baseline_2024/assets/stl_kuka/square_hole v1_rev.stl'
+    peg_stl_file_path = '/home/lm-2023/Documents/rros_baseline_2024/assets/stl_kuka/square_peg_origin_at_tip v1.stl'
 
     # PANDAS DF for the csv file path
     df = pd.read_csv(csv_file_path)
@@ -25,21 +25,27 @@ if __name__ == '__main__':
     max_vals = [0.235, 0.235, 0.204, 17.6, 17.6, 0]
 
     # NOTE: INPUT POINTS FOR OBJECT
-    peg_pcd = O3D.sample_points_from_stl(peg_stl_file_path, 5000)  # OBJECT 1
-    hole_pcd = O3D.sample_points_from_stl(hole_stl_file_path, 5000)  # OBJECT 2
-    peg_pcd = O3D.filter_pcd_by_z(pcd=peg_pcd, z_range=[0, 0.0001])  # TRIMMING THE PCD
-    hole_pcd = O3D.filter_pcd_by_z(pcd=hole_pcd, z_range=[-0.0001, 0])  # TRIMMING THE PCD
+    peg_pcd = O3D.sample_points_from_stl(peg_stl_file_path, 25000)  # OBJECT 1
+    hole_pcd = O3D.sample_points_from_stl(hole_stl_file_path, 20000)  # OBJECT 2
+    peg_pcd = O3D.filter_pcd_by_z(pcd=peg_pcd, z_range=[0, 0.00001])  # TRIMMING THE PCD
+    hole_pcd = O3D.filter_pcd_by_z(pcd=hole_pcd, z_range=[-0.00001, 0])  # TRIMMING THE PCD
 
     print("Number of Points in the Peg : ", np.asarray(peg_pcd.points).shape[0])
     print("Number of Points in the Hole : ", np.asarray(hole_pcd.points).shape[0])
 
-    peg_sph_rad = O3D.find_closest_pair_distance_in_pcd(peg_pcd)  # Sphere Radius for Peg
-    hole_sph_rad = O3D.find_closest_pair_distance_in_pcd(hole_pcd)  # Sphere Radius for Hole
+    peg_sph_rad = O3D.find_closest_pair_distance_in_pcd(peg_pcd) / 2  # Sphere Radius for Peg , method returns diameter
+    hole_sph_rad = O3D.find_closest_pair_distance_in_pcd(hole_pcd) / 2 # Sphere Radius for Hole, method returns diameter
     sph_rad = min(peg_sph_rad, hole_sph_rad)  # TODO : Check if doing this is correct
+    sph_rad = 0.4 # FOR NOW WE HAVE MANUALLY SET , BY CHECKING VISUALLY
+    gamma = 0.0  # TO ALLOW OPTIMIZATION TO CONVERGE
+    O3D.render_spheres_for_pcd(pcd=peg_pcd, radius=sph_rad - gamma)  # RENDER TO CHECK
+    O3D.render_spheres_for_pcd(pcd=hole_pcd, radius=sph_rad - gamma)  # RENDER TO CHECK
+    O3D.render_spheres_for_pcds(pcds=[peg_pcd, hole_pcd], radii=[sph_rad - gamma, sph_rad - gamma], colors=[(1, 0, 0), (0, 1, 0)])
 
-    # O3D.render_spheres_for_pcd(pcd=peg_pcd, radius=sph_rad - 0.1)  # RENDER TO CHECK
-    # O3D.render_spheres_for_pcd(pcd=hole_pcd, radius=sph_rad - 0.1)  # RENDER TO CHECK
-    # O3D.render_spheres_for_pcds(pcds=[peg_pcd, hole_pcd], radii=[.5, .5], colors=[(1, 0, 0), (0, 1, 0)])
+    # NOTE(dhanush) : TO USE THEIR ACTUAL RESPECTIVE RADII
+    # O3D.render_spheres_for_pcd(pcd=peg_pcd, radius=peg_sph_rad - gamma)  # RENDER TO CHECK
+    # O3D.render_spheres_for_pcd(pcd=hole_pcd, radius=hole_sph_rad - gamma)  # RENDER TO CHECK
+    # O3D.render_spheres_for_pcds(pcds=[peg_pcd, hole_pcd], radii=[peg_sph_rad - gamma, hole_sph_rad - gamma], colors=[(1, 0, 0), (0, 1, 0)])
     # import pdb; pdb.set_trace()
 
 
@@ -51,7 +57,7 @@ if __name__ == '__main__':
         baseline_object = robot_pipeline()
         # Open3D Stuff HERE and SET PARAMS
         baseline_object.set_pcd_objects(obj1_pcd=peg_pcd, obj2_pcd=hole_pcd)
-        baseline_object.set_params(stiffness=np.eye(6), obj1_sphere_rad=sph_rad - 0.05, obj2_sphere_rad=sph_rad - 0.05,
+        baseline_object.set_params(stiffness=np.eye(6), obj1_sphere_rad=sph_rad - gamma, obj2_sphere_rad=sph_rad - gamma,
                                    min_vals_UC=min_vals, max_vals_UC=max_vals)
 
         # INPUT SENSED FORCE HERE
@@ -96,7 +102,7 @@ if __name__ == '__main__':
             'intermediate_q_stars': [q_star_val for q_star_val in q_star_history]  # Directly use the list items
         }
 
-        output_file_path = f'C:\\Users\\Dhanush\\PycharmProjects\\rros_baselines_2024\\data\\csv_data_all\\output_row_{row_number}.json'
+        output_file_path = f'/home/lm-2023/Documents/rros_baseline_2024/data/csv_data_paper/JSON/utput_row_{row_number}.json'
 
         # Save the results to a JSON file
         with open(output_file_path, 'w') as json_file:
