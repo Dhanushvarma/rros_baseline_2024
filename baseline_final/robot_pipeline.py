@@ -22,6 +22,7 @@ class robot_pipeline:
         self.obj1_sph_rad = None  # OBJECT 1 PCD SPHERE RADIUS
         self.obj2_sph_rad = None  # OBJECT 2 PCD SPHERE RADIUS
         self.stiffness_matrix = None  # STIFFNESS MATRIX - set to identity
+        self.collision_threshold = None  # CCP ALGORITHM PARAMETER
 
         self.obj1_pcd = None  # PCD OF OBJECT 1
         self.obj2_pcd = None  # PCD OF OBJECT 2
@@ -31,12 +32,13 @@ class robot_pipeline:
         self.force_sensed = None  # INPUT FORCE SENSED IN REAL LIFE
 
 
-    def set_params(self, stiffness, obj1_sphere_rad, obj2_sphere_rad, min_vals_UC, max_vals_UC):
+    def set_params(self, stiffness, obj1_sphere_rad, obj2_sphere_rad, min_vals_UC, max_vals_UC, collision_threshold):
         self.stiffness_matrix = stiffness
         self.obj1_sph_rad = obj1_sphere_rad
         self.obj2_sph_rad = obj2_sphere_rad
         self.min_vals_UC = min_vals_UC
         self.max_vals_UC = max_vals_UC
+        self.collision_threshold = collision_threshold
 
         return None
 
@@ -73,9 +75,61 @@ class robot_pipeline:
 
         return constraints_list
 
+    def give_CCP_constraints_list(self, q_star, aux_var):
+
+        constraints_list = []
+        # Build the octree using object 2 points
+        self.obj2_tree = spatial.KDTree(self.obj2_points)
+
+        for obj1_point in self.obj1_points:
+            # Apply transformation to PEG object
+            obj1_point_transformed = OS.transform_object_points(obj1_point.reshape(3,1), q_star)
+
+            # Query the octree for nearby "object 2" - HOLE points
+            nearby_obj2_indices = self.obj2_tree.query_ball_point(obj1_point_transformed, r=self.collision_threshold)
+
+            for obj2_index in nearby_obj2_indices:
+                obj2_point = self.obj2_points[obj2_index]
+
+                constraints_list += OS.constraint_single_pair(optim_var= q_star, aux_var=aux_var,
+                                                              obj1_point= obj1_point.reshape(3, 1),
+                                                              obj2_point= obj2_point.reshape(3, 1),
+                                                              radius=self.obj1_sph_rad)
+        
+        print("NUMBER OF CONSTRAINTS ARE:", len(constraints_list))
+        return constraints_list
+
+
+
+    def give_CCP_constraints_list_lite(self, q_star, aux_var, q_pred):
+
+        constraints_list = []
+        # Build the octree using object 2 points
+        self.obj2_tree = spatial.KDTree(self.obj2_points)
+
+        for obj1_point in self.obj1_points:
+            # Apply transformation to PEG object
+            obj1_point_transformed = OS.transform_object_points(obj1_point.reshape(3,1), q_pred)
+
+            # Query the octree for nearby "object 2" - HOLE points
+            nearby_obj2_indices = self.obj2_tree.query_ball_point(obj1_point_transformed, r=self.collision_threshold)
+
+            for obj2_index in nearby_obj2_indices:
+                obj2_point = self.obj2_points[obj2_index]
+
+                constraints_list += OS.constraint_single_pair(optim_var= q_star, aux_var=aux_var,
+                                                              obj1_point= obj1_point.reshape(3, 1),
+                                                              obj2_point= obj2_point.reshape(3, 1),
+                                                              radius=self.obj1_sph_rad)
+
+        print("NUMBER OF CONSTRAINTS ARE:", len(constraints_list))
+        return constraints_list
+
     def opt_problem(self, q_star, q_pred, aux_var):
 
-        constraints_list = self.give_constraints_list(q_star, aux_var)
+        constraints_list = self.give_constraints_list(q_star, aux_var)  # CONSIDER ALL PAIRS
+        constraints_list = self.give_CCP_constraints_list(q_star, aux_var)  # CCP WITH Q STAR
+        constraints_list = self.give_CCP_constraints_list_lite(q_star, aux_var, q_pred)  # CCP WITH Q PRED
 
         problem = OS.create_optimization_problem(q_pred= q_pred, q_star= q_star,
                                                  G_matrix=self.stiffness_matrix,

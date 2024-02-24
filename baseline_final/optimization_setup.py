@@ -31,7 +31,28 @@ def const_first_term(aux_var, radius, obj1_point, obj2_point):
     # Subtracting the squared radius, adjusted for shape
     return result - ((2 * radius) ** 2)
 
+def transform_object_points(obj_points, q_star):
+  """
+  Transforms object points using the given rotation and translation parameters.
 
+  Args:
+      obj_points: A numpy array of shape (num_points, 3) representing the object points.
+      q_star: A numpy array of shape (6, 1) containing the rotation and translation parameters.
+
+  Returns:
+      A numpy array of shape (num_points, 3) representing the transformed object points.
+  """
+
+  # Extract rotation and translation components
+  rot_matrix = R.from_euler('zyx', [q_star[0][0], q_star[1][0], q_star[2][0]], degrees=False).as_matrix()
+  translation = np.array([q_star[3][0], q_star[4][0], q_star[5][0]]).reshape(3, 1)
+
+  # Apply transformation to each point
+  transformed_points = rot_matrix @ obj_points.T + translation
+
+  return transformed_points.T
+
+  
 def const_second_term_matrix(aux_var, obj1_point, obj2_point):
     obj1_point = np.array(obj1_point).reshape(3, 1)  # Ensure obj1_point is correctly shaped
     obj2_point = np.array(obj2_point).reshape(3, 1)  # Ensure obj2_point is correctly shaped
