@@ -9,6 +9,8 @@ import cvxpy as cp
 import optimization_setup as OS
 import open_3d_utils as O3D
 from circle_pcd import *
+import scipy.spatial as spatial #NOTE(dhanush) : For KD Tree computaation
+
 
 
 class robot_pipeline:
@@ -68,6 +70,8 @@ class robot_pipeline:
 
             for j in range(self.obj2_points.shape[0]):
 
+                import pdb; pdb.set_trace()
+
                 constraints_list += OS.constraint_single_pair(optim_var= q_star, aux_var=aux_var,
                                                               obj1_point=self.obj1_points[i].reshape(3, 1),
                                                               obj2_point=self.obj2_points[j].reshape(3, 1),
@@ -109,11 +113,10 @@ class robot_pipeline:
 
         for obj1_point in self.obj1_points:
             # Apply transformation to PEG object
-            obj1_point_transformed = OS.transform_object_points(obj1_point.reshape(3,1), q_pred)
+            obj1_point_transformed = OS.transform_object_points(obj1_point, q_pred)
 
             # Query the octree for nearby "object 2" - HOLE points
             nearby_obj2_indices = self.obj2_tree.query_ball_point(obj1_point_transformed, r=self.collision_threshold)
-
             for obj2_index in nearby_obj2_indices:
                 obj2_point = self.obj2_points[obj2_index]
 
@@ -127,8 +130,8 @@ class robot_pipeline:
 
     def opt_problem(self, q_star, q_pred, aux_var):
 
-        constraints_list = self.give_constraints_list(q_star, aux_var)  # CONSIDER ALL PAIRS
-        constraints_list = self.give_CCP_constraints_list(q_star, aux_var)  # CCP WITH Q STAR
+        # constraints_list = self.give_constraints_list(q_star, aux_var)  # CONSIDER ALL PAIRS
+        # constraints_list = self.give_CCP_constraints_list(q_star, aux_var)  # CCP WITH Q STAR
         constraints_list = self.give_CCP_constraints_list_lite(q_star, aux_var, q_pred)  # CCP WITH Q PRED
 
         problem = OS.create_optimization_problem(q_pred= q_pred, q_star= q_star,

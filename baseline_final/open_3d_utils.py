@@ -174,7 +174,8 @@ def render_spheres_for_pcd(pcd, radius=0.05):
         sphere.compute_vertex_normals()
 
     # Visualize the spheres
-    o3d.visualization.draw(spheres)
+    # o3d.visualization.draw(spheres)
+    o3d.visualization.draw_geometries(spheres)
 
 
 def render_spheres_for_pcds(pcds, radii, colors):

@@ -4,7 +4,7 @@ THIS SCRIPT CONTAINS THE FUNCTIONS FOR THE IMPLEMENTATION OF THE OPTIMIZATION PR
 
 import numpy as np
 import cvxpy as cp
-from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Rotation as R  # NOTE(dhanush) : Using this for transformations
 import pdb
 
 
@@ -31,26 +31,28 @@ def const_first_term(aux_var, radius, obj1_point, obj2_point):
     # Subtracting the squared radius, adjusted for shape
     return result - ((2 * radius) ** 2)
 
-def transform_object_points(obj_points, q_star):
-  """
-  Transforms object points using the given rotation and translation parameters.
+def transform_object_points(obj_point, q_star):
+    """
+    Transforms a single object point using the given rotation and translation parameters.
 
-  Args:
-      obj_points: A numpy array of shape (num_points, 3) representing the object points.
-      q_star: A numpy array of shape (6, 1) containing the rotation and translation parameters.
+    Args:
+        obj_point: A numpy array of shape (3,) representing the object point.
+        q_star: A numpy array of shape (6, 1) containing the rotation and translation parameters.
 
-  Returns:
-      A numpy array of shape (num_points, 3) representing the transformed object points.
-  """
+    Returns:
+        A numpy array of shape (3,) representing the transformed object point.
+    """
 
-  # Extract rotation and translation components
-  rot_matrix = R.from_euler('zyx', [q_star[0][0], q_star[1][0], q_star[2][0]], degrees=False).as_matrix()
-  translation = np.array([q_star[3][0], q_star[4][0], q_star[5][0]]).reshape(3, 1)
+    obj_point = np.array(obj_point).reshape(3, 1)  # Ensure obj_point is correctly shaped
+    
+    # Extract rotation and translation components
+    rot_matrix = R.from_euler('zyx', [q_star[0][0], q_star[1][0], q_star[2][0]], degrees=False).as_matrix()
+    translation = np.array([q_star[3][0], q_star[4][0], q_star[5][0]]).reshape(3, 1)
 
-  # Apply transformation to each point
-  transformed_points = rot_matrix @ obj_points.T + translation
+    # Apply transformation to the point
+    transformed_point = rot_matrix @ obj_point + translation
 
-  return transformed_points.T
+    return transformed_point.reshape(3,)
 
   
 def const_second_term_matrix(aux_var, obj1_point, obj2_point):
