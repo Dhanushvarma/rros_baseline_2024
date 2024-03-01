@@ -146,7 +146,7 @@ def read_data_from_csv(csv_file_path, row_number):
     df = pd.read_csv(csv_file_path)
 
     force_sensed = df.loc[row_number, ['Tx', 'Ty', 'Tz', 'Fx', 'Fy', 'Fz']].to_numpy().reshape(6, 1)
-    position_vector_mm = df.loc[row_number, ['x', 'y', 'z']].to_numpy() * 1000
+    position_vector_mm = df.loc[row_number, ['x', 'y', 'z']].to_numpy()  # NOTE(dhanush) : Prev was multiplied by 1000, for conversion 
     orientation_vector = df.loc[row_number, ['roll', 'pitch', 'yaw']].to_numpy()
 
     pose_vector = np.vstack((orientation_vector, position_vector_mm)).reshape(6, 1)

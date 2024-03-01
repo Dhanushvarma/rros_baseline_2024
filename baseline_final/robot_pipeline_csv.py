@@ -12,7 +12,7 @@ import time
 if __name__ == '__main__':
 
     # NOTE(dhanush) : These are the file paths for the STLs
-    csv_file_path = '/home/lm-2023/Documents/rros_baseline_2024/data/csv_data_paper/paper_data_force_noise.csv'
+    csv_file_path = '/home/lm-2023/Documents/rros_baseline_2024/data/csv_convergence_test/paper_data_force_noise.csv'
     hole_stl_file_path = '/home/lm-2023/Documents/rros_baseline_2024/assets/stl_kuka/square_hole v1_rev.stl'
     peg_stl_file_path = '/home/lm-2023/Documents/rros_baseline_2024/assets/stl_kuka/square_peg_origin_at_tip v1.stl'
 
@@ -20,22 +20,23 @@ if __name__ == '__main__':
     df = pd.read_csv(csv_file_path)
     df = df.dropna()  # To Drop any bad rows
     num_rows = len(df)
+    # num_rows = 1
 
     # UNCERTAINTY GRID - continuous range
     min_vals = [-0.235, -0.235, -0.204, -17.6, -17.6, -3.49]
     max_vals = [0.235, 0.235, 0.204, 17.6, 17.6, 0]
 
     # NOTE: INPUT POINTS FOR OBJECT
-    peg_pcd = O3D.sample_points_from_stl(peg_stl_file_path, 35000)  # OBJECT 1
-    hole_pcd = O3D.sample_points_from_stl(hole_stl_file_path, 35000)  # OBJECT 2
-    peg_pcd = O3D.filter_pcd_by_z(pcd=peg_pcd, z_range=[0, 10])  # TRIMMING THE PCD
-    hole_pcd = O3D.filter_pcd_by_z(pcd=hole_pcd, z_range=[-10, 0])  # TRIMMING THE PCD
+    peg_pcd = O3D.sample_points_from_stl(peg_stl_file_path, 30000)  # OBJECT 1
+    hole_pcd = O3D.sample_points_from_stl(hole_stl_file_path, 30000)  # OBJECT 2
+    peg_pcd = O3D.filter_pcd_by_z(pcd=peg_pcd, z_range=[0, 5])  # TRIMMING THE PCD
+    hole_pcd = O3D.filter_pcd_by_z(pcd=hole_pcd, z_range=[-5, 0])  # TRIMMING THE PCD
 
     print("Number of Points in the Peg : ", np.asarray(peg_pcd.points).shape[0])
     print("Number of Points in the Hole : ", np.asarray(hole_pcd.points).shape[0])
 
-    peg_sph_rad = O3D.find_closest_pair_distance_in_pcd(peg_pcd) / 2  # Sphere Radius for Peg , method returns diameter
-    hole_sph_rad = O3D.find_closest_pair_distance_in_pcd(hole_pcd) / 2 # Sphere Radius for Hole, method returns diameter
+    peg_sph_rad = O3D.find_closest_pair_distance_in_pcd(peg_pcd) # Sphere Radius for Peg , method returns diameter
+    hole_sph_rad = O3D.find_closest_pair_distance_in_pcd(hole_pcd) # Sphere Radius for Hole, method returns diameter
     sph_rad = min(peg_sph_rad, hole_sph_rad)  # TODO : Check if doing this is correct
     sph_rad = 0.4 # NOTE(dhanush) : FOR NOW WE HAVE MANUALLY SET , BY CHECKING VISUALLY
     gamma = 0.0  # NOTE(dhanush) : TO ALLOW OPTIMIZATION TO CONVERGE
@@ -44,10 +45,10 @@ if __name__ == '__main__':
     # O3D.render_spheres_for_pcds(pcds=[peg_pcd, hole_pcd], radii=[sph_rad - gamma, sph_rad - gamma], colors=[(1, 0, 0), (0, 1, 0)])
 
     # NOTE(dhanush) : TO USE THEIR ACTUAL RESPECTIVE RADII
-    O3D.render_spheres_for_pcd(pcd=peg_pcd, radius=peg_sph_rad - gamma)  # RENDER TO CHECK
-    O3D.render_spheres_for_pcd(pcd=hole_pcd, radius=hole_sph_rad - gamma)  # RENDER TO CHECK
+    # O3D.render_spheres_for_pcd(pcd=peg_pcd, radius=peg_sph_rad - gamma)  # RENDER TO CHECK
+    # O3D.render_spheres_for_pcd(pcd=hole_pcd, radius=hole_sph_rad - gamma)  # RENDER TO CHECK
     # O3D.render_spheres_for_pcds(pcds=[peg_pcd, hole_pcd], radii=[peg_sph_rad - gamma, hole_sph_rad - gamma], colors=[(1, 0, 0), (0, 1, 0)])
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
 
 
     # LOOPING THROUGH THE ROWS PROVIDED
@@ -61,37 +62,42 @@ if __name__ == '__main__':
         # NOTE(dhanush) : Collision threshold needs to be tuned.
         baseline_object.set_pcd_objects(obj1_pcd=peg_pcd, obj2_pcd=hole_pcd)
         baseline_object.set_params(stiffness=np.eye(6), obj1_sphere_rad=sph_rad - gamma, obj2_sphere_rad=sph_rad - gamma,
-                                   min_vals_UC=min_vals, max_vals_UC=max_vals, collision_threshold= 5)
+                                   min_vals_UC=min_vals, max_vals_UC=max_vals, collision_threshold= 0.45)
 
         # INPUT SENSED FORCE HERE
         baseline_object.set_force_sensed(force_sensed=force_sensed)
         q_star = cp.Variable((6, 1))  # THE OPTIMIZATION VARIABLE
+        q_star_previous = None # To keep track of the previous q star
         q_star_history = []  # To store intermediate q_star values
 
-        EPSILON = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5]) # EPSILON BOUND FOR FORCE TERM | (F_c) - (F_s) < EPSILON
-        MAX_ITERATIONS = 40  # Maximum number of iterations per FORCE INPUT
+        # EPSILON = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5]) # EPSILON BOUND FOR FORCE TERM | (F_c) - (F_s) < EPSILON
+        MAX_ITERATIONS = 5000  # Maximum number of iterations per FORCE INPUT
+        CONVERGENCE_THRESHOLD = 0.0000010  # 5 percent change | CONVERGENCE
 
         for iteration in range(MAX_ITERATIONS):
             # Sample and solve optimization problem
             q_pred = baseline_object.sample_UC_grid()
             optimization_problem = baseline_object.opt_problem(q_star=q_star, q_pred=q_pred, aux_var=baseline_object.q_star_init)[0]
-            optimization_problem.solve(solver=cp.ECOS, verbose=True, warm_start = True)
+            optimization_problem.solve(solver=cp.ECOS, verbose=True, warm_start=True)
 
             # Store intermediate q_star value if not None
             if q_star.value is not None:
-                q_star_history.append(q_star.value.flatten().tolist())
-                # Calculate force difference and check for convergence
-                force_calculated = baseline_object.stiffness_matrix @ (q_pred - q_star.value)
-                force_difference = np.abs(force_sensed - force_calculated)
-            
-            else: # TODO(dhanush) : Fix this hack
-                force_difference = np.abs(force_sensed)
+                q_star_value_flat = q_star.value.flatten()
+                q_star_history.append(q_star_value_flat.tolist())
 
-            # NOTE(dhanush) : When force guess is good or reached max iterations
-            if np.all(force_difference <= EPSILON.reshape(6, 1)) or iteration == MAX_ITERATIONS - 1:
-                break
-            else: # NOTE(dhanush) : Continue with previous iteration solution or init var
-                baseline_object.q_star_init = q_star.value if q_star.value is not None else np.zeros((6, 1))
+                # Calculate percentage change for convergence if not the first iteration
+                if iteration > 0:
+                    prev_q_star_value_flat = q_star_history[-2]  # Get the previous q_star value
+                    percentage_change = np.abs((q_star_value_flat - prev_q_star_value_flat) / prev_q_star_value_flat)
+                    if np.all(percentage_change <= CONVERGENCE_THRESHOLD):  #NOTE(dhanush) : THIS CAN BE ANY  or ALL
+                        print(f"Convergence achieved at iteration {iteration}")
+                        break
+            else:
+                # If q_star.value is None, consider it as no change (i.e., could initialize or handle differently based on needs)
+                q_star_value_flat = np.zeros(6)  # This handling might need adjustment based on your specific requirements
+
+            # Update for the next iteration
+            baseline_object.q_star_init = q_star.value if q_star.value is not None else np.zeros((6, 1))
 
         # Prepare and save results
         results_data = {
@@ -109,7 +115,7 @@ if __name__ == '__main__':
         }
 
         # FILE_PATH OF output JSON's
-        output_file_path = f'/home/lm-2023/Documents/rros_baseline_2024/data/csv_data_paper/JSON_(iter:40)_(depth:10)_(CCP:5)/utput_row_{row_number}.json'
+        output_file_path = f'/home/lm-2023/Documents/rros_baseline_2024/data/csv_convergence_test/feb_29_final/utput_row_{row_number}.json'
 
         # Save the results to a JSON file
         with open(output_file_path, 'w') as json_file:
